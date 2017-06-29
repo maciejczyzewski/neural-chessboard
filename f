@@ -1,0 +1,654 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# Built-in Python Modules
+import math
+import os, sys
+import argparse
+import deps as dd
+
+# Scientific & Imaging Libraries
+import matplotlib.pyplot as plt
+import scipy, cv2, numpy as np
+import networkx as nx
+
+# Daily Routine Shortcuts
+from copy import copy
+import collections, itertools, functools
+import scipy.cluster, scipy.signal, tflearn
+from scipy.spatial import Delaunay, ConvexHull
+import pyclipper
+import matplotlib.path
+load = cv2.imread
+save = cv2.imwrite
+na = np.array
+
+################################################################################
+
+# FIXME:
+# 1. make suitable for production (speed imprv., 2 modes - debug, normal)
+# 2. clean code --> modularize (FAPL, PAMG + neural networks)
+# 3. better CLI --> colors, warnings, more info.
+# 4. repair grid algorithm in PAMG (currently - naive version #2)
+# 5. repair NC_FAPL_CLAHE parameters in FAPL module
+# 6. all arrays should be numpy ("na" function as a bridge)
+
+# montage -background none -tile 5x4 in/*.jpg miff:- | convert miff:- -quality 100 -resize 2048x2048 ins.jpg
+# montage -mode concatenate -background none -geometry +75+0 -tile 2x1 ins.jpg outs.jpg chess.jpg
+# convert -repage 500x500 -delay 100 -loop 0 -alpha set -dispose previous *.jpg steps.gif
+
+NC_LAYER = 3              # number of layers
+NC_OUTPUT = 'test/steps/' # output path (debug)
+
+################################################################################
+
+class ansi:
+	WHITE = '\033[0;97m'; WHITE_B = '\033[1;97m'
+	YELLOW = '\033[0;33m'; YELLOW_B = '\033[1;33m'
+	RED = '\033[0;31m'; RED_B = '\033[1;31m'
+	BLUE = '\033[0;94m'; BLUE_B = '\033[1;94m'
+	CYAN = '\033[0;36m'; CYAN_B = '\033[1;36m'
+	ENDC = '\033[0m'
+
+def errn(message, *lines):
+	string = "\n{}ERROR: " + message + "{}\n" + "\n".join(lines) + \
+			("{}\n" if lines else "{}")
+	print(string.format(ansi.RED_B, ansi.RED, ansi.ENDC))
+	sys.exit(-1)
+
+def warn(message, *lines):
+	string = "\n{}WARNING: " + message + "{}\n" + "\n".join(lines) + "{}\n"
+	print(string.format(ansi.YELLOW_B, ansi.YELLOW, ansi.ENDC))
+
+################################################################################
+
+def debug_path(d=0):
+	global NC_LAYER, NC_OUTPUT
+	return NC_OUTPUT + str(NC_LAYER + d) + "_"
+
+def debug_lines(img, lines, color=(0,0,255), size=2):
+	"""draw lines"""
+	for a, b in lines: cv2.line(img,tuple(a),tuple(b),color,size)
+	return img
+
+def debug_points(img, points, color=(0,0,255), size=10):
+	"""draw points"""
+	for pt in points: cv2.circle(img,(int(pt[0]),int(pt[1])),size,color,-1)
+	return img
+
+################################################################################
+
+def image_scale(pts, scale):
+	"""scale to original"""
+	def __loop(x, y): return [x[0] * y, x[1] * y]
+	return list(map(functools.partial(__loop, y=1/scale), pts))
+
+def image_resize(img, height=500):
+	"""resize image to same normalized area (height**2)"""
+	pixels = height * height; shape = list(np.shape(img))
+	scale = math.sqrt(float(pixels)/float(shape[0]*shape[1]))
+	shape[0] *= scale; shape[1] *= scale
+	img = cv2.resize(img, (int(shape[1]), int(shape[0])))
+	img_shape = np.shape(img)
+	return img, img_shape, scale
+
+def image_transform(img, points, square_length=150):
+	"""crop original image using perspetive warp"""
+	board_length = square_length * 8
+	def __dis(a, b): return np.linalg.norm(na(a)-na(b))
+	def __shi(seq, n=0): return seq[-(n % len(seq)):] + seq[:-(n % len(seq))]
+	best_idx, best_val = 0, 10**6
+	for idx, val in enumerate(points):
+		val = __dis(val, [0, 0])
+		if val < best_val:
+			best_idx, best_val = idx, val
+	pts1 = np.float32(__shi(points, 4 - best_idx))
+	pts2 = np.float32([[0, 0], [board_length, 0], \
+			[board_length, board_length], [0, board_length]])
+	M = cv2.getPerspectiveTransform(pts1, pts2)
+	W = cv2.warpPerspective(img, M, (board_length, board_length))
+	return W
+
+class ImageObject(object):
+	images = {}; scale = 1; shape = (0, 0)
+
+	def __init__(self, img):
+		"""save and prepare image array"""
+		self.images['orig'] = img
+
+		# resize & use retinex algorithm
+		img, __shape, self.scale = image_resize(img)
+		self.images['main'] = dd.retinex.retinex(img)
+
+		# make copy for debug purposes (FIXME: make as option)
+		self.images['test'] = copy(self.images['main'])
+		self.shape = __shape
+
+	def __getitem__(self, attr):
+		"""return image as array"""
+		return self.images[attr]
+
+	def __setitem__(self, attr, val):
+		"""save image to object"""
+		self.images[attr] = val
+
+	def crop(self, pts):
+		"""crop using 4 points transform"""
+		pts_orig = image_scale(pts, self.scale)
+		img_crop = image_transform(self.images['orig'], pts_orig)
+		self.__init__(img_crop)
+
+################################################################################
+
+# FIXME: use neural to achive good result (or maybe hist.)
+# plt.hist(img.ravel(),256,[0,256]); plt.savefig("tmp-hist.png")
+# for CLAHE parameters and Canny?
+
+NC_FAPL_CLAHE = [[1,   (3, 3),   3], # @1
+		         [3,   (3, 3),   5], # @2
+				 [0,   (0, 0),   0]] # EE
+
+def fapl_canny(img, sigma=0.33): 
+	"""apply Canny edge detector (automatic thresh)"""
+	v = np.median(img) # FIXME: neural
+	img = cv2.medianBlur(img, 5)
+	img = cv2.GaussianBlur(img, (7, 7), 2)
+	lower = int(max(0, (1.0 - sigma) * v))
+	upper = int(min(255, (1.0 + sigma) * v))
+	return cv2.Canny(img, lower, upper)
+
+def fapl_detector(img, alfa=150, beta=2):
+	"""detect lines using Hough algorithm"""
+	__lines, lines = [], cv2.HoughLinesP(img, rho=1, theta=np.pi/360*beta,
+		threshold=40, minLineLength=40, maxLineGap=10) # FIXME: neural
+	if lines is None: return []
+	for line in np.reshape(lines, (-1, 4)):
+		__lines += [[[int(line[0]), int(line[1])],
+			         [int(line[2]), int(line[3])]]]
+	return __lines
+
+def fapl_clahe(img, limit=2, grid=(3,3), iters=5):
+	"""repair using clahe algorithm (adaptive histogram equalization)"""
+	img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+	for i in range(iters): # FIXME: neural
+		img = cv2.createCLAHE(clipLimit=limit, tileGridSize=grid).apply(img)
+	return img
+
+def FAPL(img, thresh=150):
+	"""find all lines using different settings"""
+	print("\n[FAPL]")
+	lines = []; i = 0 # FIXME: neural
+	for key, arr in enumerate(NC_FAPL_CLAHE):
+		tmp = fapl_clahe(img, limit=arr[0], grid=arr[1], iters=arr[2])
+		lines_found = list(fapl_detector(fapl_canny(tmp), thresh)); i += 1
+		lines += lines_found; print("filter:{} {} -> {}".format(i, \
+				arr, len(lines_found)))
+	return lines
+
+def rFAPL(img, lines):
+	print("\n[rFAPL]")
+	__cache = {}
+
+	def __lfp(a, b):
+		idx = hash("__lfp" + str(a) + str(b))
+		if idx in __cache: return __cache[idx]
+		if a[0] == b[0]: a[0] -= 1 # FIXME: polyfit fix
+		__cache[idx] = np.polyfit([a[0], b[0]], [a[1], b[1]], 1)
+		return __cache[idx]
+	def __srt(seq):
+		seq.sort(key=lambda x: (x[2], x[0][0], x[0][1], x[1][0], x[1][1]))
+		return seq
+	def __dis(a, b):
+		idx = hash("__dis" + str(a) + str(b))
+		if idx in __cache: return __cache[idx]
+		__cache[idx] = np.linalg.norm(na(a)-na(b))
+		return __cache[idx]
+	def __win(seq, n=10):
+		it = iter(seq); result = tuple(itertools.islice(it, n))
+		if len(result) == n: yield result
+		for elem in it:
+			result = result[1:] + (elem,)
+			yield result
+	def __deg(a, b): return abs(math.degrees(__lfp(a, b)[0])) % 90
+		
+	# sort by angle
+	__lines = []
+	for a, b in lines:
+		if a[0] < b[0]: a, b = b, a
+		if str(a) == str(b): continue
+		__lines.append([a, b, __deg(a, b)])
+	lines = __srt(__lines)
+
+	# FIXME: window algorithm
+	def __sieve(lines):
+		__lines = []; __not = []; i = 0
+		for key1 in range(0, len(lines)):
+			i += 1 # FIXME: make tree
+			for key2 in range(i, len(lines)):
+				if key1 in __not: break
+				if key2 in __not: continue
+
+				l1 = lines[key1]; l2 = lines[key2]
+				# if abs(l1[2] - l2[2]) > 90/3: break # FIXME
+				
+				da, db = __dis(l1[0], l1[1]), __dis(l2[0], l2[1])
+
+				if da > db: l1, l2, da, db = l2, l1, db, da
+
+				d1a = np.linalg.norm(np.cross(na(l1[1])-na(l1[0]), \
+					 na(l1[0])-na(l2[0])))/da
+				d2a = np.linalg.norm(np.cross(na(l1[1])-na(l1[0]), \
+					 na(l1[0])-na(l2[1])))/da
+
+				d1b = np.linalg.norm(np.cross(na(l2[1])-na(l2[0]), \
+					 na(l2[0])-na(l1[0])))/db
+				d2b = np.linalg.norm(np.cross(na(l2[1])-na(l2[0]), \
+					 na(l2[0])-na(l1[1])))/db
+
+				d1, d2 = (d1a + d1b)/2, (d2a + d2b)/2
+
+				if d1 + d2 == 0: d1 += 0.00001 # FIXME
+				t1 = (da/(d1 + d2) > 10 and db/(d1 + d2) > 10)
+				if not t1: continue
+
+				dx, dy = __dis(l1[0], l2[0]), __dis(l1[1], l2[1])
+
+				# L1        0---------------1
+				# L2                0------------------1
+				
+				A = {
+					-__dis(l1[0], l1[1]): [l1[0], l1[1]],
+					-__dis(l2[0], l2[1]): [l2[0], l2[1]],
+					-__dis(l1[0], l2[0]): [l1[0], l2[0]],
+					-__dis(l1[0], l2[1]): [l1[0], l2[1]],
+					-__dis(l1[1], l2[0]): [l1[1], l2[0]],
+					-__dis(l1[1], l2[1]): [l1[1], l2[1]],
+				}
+
+				A = collections.OrderedDict(sorted(A.items()))
+				K = next(iter(A)); L = A[K]
+
+				t2a = (dx < da * 2.1 and dy < db * 2.1)
+				t2b = (da + db >= abs(K))
+
+				if t2a or t2b:
+					print('+', end='')
+					__not += [key1, key2]
+					__lines.append([*L, __deg(L[0], L[1])])
+				#else:
+				#	imgc = copy(img)
+				#	cv2.line(imgc,tuple(l1[0]),tuple(l1[1]),(0,255,0),5)
+				#	cv2.line(imgc,tuple(l2[0]),tuple(l2[1]),(0,0,255),5)
+				#	arr = list(map(int, [dx, dy, da, db, abs(K)]))
+				#	print((key1, key2), t1, t2a, t2b, arr)
+				#	save("test/out/{}-{}.jpg".format(key1, key2), imgc)
+		for key in range(0, len(lines)):
+			if key not in __not:
+				__lines.append(lines[key])
+		return __lines
+	
+	n = len(lines)
+	for _ in range(0, 100):
+		print("TREE LEVEL", _ + 1, end=" ")
+		lines = __sieve(__srt(lines))
+		print()
+		if n == len(lines): break
+		n = len(lines)
+
+	lines_norm = []
+	for a, b, _ in lines:
+		lines_norm += [[a, b]]
+	return lines_norm
+
+################################################################################
+
+NC_PAMG_MODEL = tflearn.DNN(dd.pamg.network())
+NC_PAMG_MODEL.load('data/models/pamg.tflearn')
+
+def pamg_intersections(lines):
+	__lines = []
+	for a, b in lines:
+		__lines += [[(a[0], a[1]), (b[0], b[1])]]
+	return dd.ppi.isect_segments(__lines)
+
+def pamg_cluster(points, max_dist=10):
+	"""cluster very similar points"""
+	Y = scipy.spatial.distance.pdist(points)
+	Z = scipy.cluster.hierarchy.single(Y)
+	T = scipy.cluster.hierarchy.fcluster(Z, max_dist, 'distance')
+	clusters = collections.defaultdict(list)
+	for i in range(len(T)):
+		clusters[T[i]].append(points[i])
+	clusters = clusters.values()
+	clusters = map(lambda arr: (np.mean(np.array(arr)[:,0]),
+		                        np.mean(np.array(arr)[:,1])), clusters)
+	return list(clusters)
+
+def pamg_detector(img):
+	"""determine if that shape is positive"""
+	global NC_LAYER
+
+	hashid = str(hash(img.tostring()))
+
+	img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+	img = cv2.threshold(img, 0, 255, cv2.THRESH_OTSU)[1]
+	img = cv2.Canny(img, 0, 255)
+	
+	img = cv2.resize(img, (21, 21), interpolation=cv2.INTER_CUBIC)
+	X = [np.where(img>int(255/2), 1, 0).ravel()]
+	X = X[0].reshape([-1, 21, 21, 1])
+
+	# [debug] ------------------------------------------------------------------
+	#if NC_LAYER == 3:
+	#	print((a, b), t, hashid)
+	#	save("test/out/"+hashid+".jpg", img)
+	# [debug] ------------------------------------------------------------------
+
+	img = cv2.dilate(img, None)
+	mask = cv2.copyMakeBorder(img, top=1, bottom=1, left=1, right=1,
+		borderType=cv2.BORDER_CONSTANT, value=[255,255,255])
+	mask = cv2.bitwise_not(mask); i = 0
+	_1, contours, _2 = cv2.findContours(mask,cv2.RETR_EXTERNAL,
+				                             cv2.CHAIN_APPROX_NONE)
+		
+	for cnt in contours:
+		(x,y),radius = cv2.minEnclosingCircle(cnt); x,y=int(x),int(y)
+		approx = cv2.approxPolyDP(cnt,0.1*cv2.arcLength(cnt,True),True)
+		if len(approx) == 4 and radius < 14: i += 1
+	
+	if i == 4: return (True, 1)
+
+	# --> like four rectangle feature (but the hard way)
+	pred = NC_PAMG_MODEL.predict(X)
+	a, b = pred[0][0], pred[0][1]
+	t = a > b and b < 0.03 and a > 0.975
+
+	if t: return (True, pred[0])
+	else: return (False, pred[0])
+
+# potentially a mesh grid (FIXME)
+def PAMG(img, lines, shape, size=10):
+	"""find all good points inside chessboard - potentially a mesh grid"""
+	print("\n[PAMG]")
+
+	global NC_LAYER
+	
+	def __lines_trend(lines, s=1.25):
+		lines_buffer = []
+		for a, b in lines:
+			# [A] s - scale
+			# Xa' = Xa (1+s)/2 + Xb (1-s)/2
+			# Ya' = Ya (1+s)/2 + Yb (1-s)/2
+			a[0] = int(a[0] * (1+s)/2 + b[0] * (1-s)/2)
+			a[1] = int(a[1] * (1+s)/2 + b[1] * (1-s)/2)
+			# [B] s - scale
+			# Xb' = Xb (1+s)/2 + Xa (1-s)/2
+			# Yb' = Yb (1+s)/2 + Ya (1-s)/2
+			b[0] = int(b[0] * (1+s)/2 + a[0] * (1-s)/2)
+			b[1] = int(b[1] * (1+s)/2 + a[1] * (1-s)/2)
+			lines_buffer += [[a, b]]
+		return lines_buffer
+
+	if NC_LAYER <= 2:
+		lines_trend = __lines_trend(lines, s=3)
+	else:
+		lines_trend = __lines_trend(lines, s=2)
+
+	points = na(pamg_intersections(lines_trend))
+
+	# [debug] ------------------------------------------------------------------
+	imgd = copy(img)
+	imgd = debug_lines(imgd, lines_trend, size=2, color=(0,255,0))
+	imgd = debug_points(imgd, points, size=4, color=(255,0,0))
+	save(debug_path()+"debug_pamg_raw.jpg", imgd)
+	# [debug] ------------------------------------------------------------------
+
+	points_okay = []
+	for pt in points:
+		# pixels are in integers
+		pt = list(map(int, pt))
+
+		# size of our analysis area
+		lx1 = max(0, int(pt[0]-size-1)); lx2 = max(0, int(pt[0]+size))
+		ly1 = max(0, int(pt[1]-size)); ly2 = max(0, int(pt[1]+size+1))
+
+		# cropping for detector
+		dimg = img[ly1:ly2, lx1:lx2]
+		dimg_shape = np.shape(dimg)
+		
+		# not valid
+		if dimg_shape[0] <= 0 or dimg_shape[1] <= 0: continue
+
+		# use neural network
+		if not pamg_detector(dimg)[0]: continue
+
+		# add if okay
+		points_okay += [pt]
+	points_okay = pamg_cluster(points_okay)
+
+	# -- NOT IMPLEMENTED -------------------------------------------------------
+	# FIXME: [scikit/tflearn]: grid reproduce (2d clustering with prediction)
+	# --------------------------------------------------------------------------
+
+	# primitive: 1. convex 2. normalize (FIXME: CURRENT)
+	# should be: 1. grid 2. prediction 3. detection 4. analysis
+
+	def __outer_grid(points, alfa=0.01):
+		hull = scipy.spatial.ConvexHull(points).vertices; cnt=[]
+		for pt in hull: cnt += [points[pt].astype(int)]
+		approx = cv2.approxPolyDP(na(cnt),alfa*cv2.arcLength(na(cnt),True),True)
+		return list(itertools.chain(*approx))
+
+	cnt = __outer_grid(na(points_okay), 0.005)
+
+	lines_pred = []; i = 0
+	for key1 in range(0, len(cnt)):
+		i += 1
+		for key2 in range(i, i + 1): # 2 the best (but need fixes)
+			a, b = cnt[key1 % len(cnt)], cnt[key2 % len(cnt)]
+			lines_pred += [[list(a), list(b)]]
+	lines_pred = __lines_trend(lines_pred, s=20)
+
+	points_pred = []; i = 0
+	points_debug = []
+	for key1 in range(0, len(lines_pred)):
+		i += 1
+		for key2 in range(i, len(lines_pred)):
+			l1, l2 = lines_pred[key1], \
+			         lines_pred[key2]
+			
+			deg1 = math.atan2(l1[0][1] - l1[1][1],
+							  l1[0][0] - l1[1][0])
+			deg2 = math.atan2(l2[0][1] - l2[1][1],
+							  l2[0][0] - l2[1][0])
+			deg = math.degrees(deg1-deg2)
+			deg = abs(deg) % 90
+
+			# not inter
+			inters = pamg_intersections([l1, l2])
+			if len(inters) != 1: continue
+			pt = inters[0]
+
+			# outside
+			if pt[0] < 0 or pt[1] < 0 or \
+			   pt[0] > np.shape(img)[1] or \
+			   pt[1] > np.shape(img)[0]: continue
+
+			pt = list(map(int, pt))
+
+			# detecting shit (20 - is okay, 30 - is good (but needs fix)
+			t = not (int(deg) < 90 - 20 and int(deg) > 20)
+		
+			if t: points_pred += [pt]
+			else: points_debug += [pt]
+
+	points_pred = pamg_cluster(points_okay + points_pred)
+	#cnt = pamg_cluster(dd.concave.concaveHull(na(points_pred), 3))
+	cnt = points_pred
+
+	def __poly_sort(pts):
+		"""sort points clockwise"""
+		mlat = sum(x[0] for x in pts) / len(pts)
+		mlng = sum(x[1] for x in pts) / len(pts)
+		def __sort(x):
+			return (math.atan2(x[0]-mlat, x[1]-mlng) + \
+					2*math.pi)%(2*math.pi)
+		pts.sort(key=__sort)
+		return pts
+
+	imgd2 = copy(img)
+
+	def __poly_score(cnt, pts):
+		a = cnt[0]; b = cnt[1]
+		c = cnt[2]; d = cnt[3]
+
+		# alfa = 10, beta = 2
+		alfa = 20; beta = 2
+
+		pco = pyclipper.PyclipperOffset()
+		pco.AddPath(cnt, pyclipper.JT_MITER, pyclipper.ET_CLOSEDPOLYGON)
+		pcnt = matplotlib.path.Path(pco.Execute(alfa)[0])
+		pts_in = np.count_nonzero(pcnt.contains_points(pts))
+		if len(pts) - beta > pts_in: return 0
+
+		#(x,y),radius = cv2.minEnclosingCircle(cnt)
+		#center = (int(x),int(y))
+		#radius = int(radius)
+		#area = math.pi*(radius**2)
+
+		x,y,w,h = cv2.boundingRect(cnt)
+		box = na([[x,y], [x+w, y], [x+w, y+h], [x, y+h]])
+		area = cv2.contourArea(box)
+
+		#rect = cv2.minAreaRect(cnt)
+		#box = cv2.boxPoints(rect)
+		#box = np.int0(box)
+		#area = cv2.contourArea(box)
+
+		cv2.drawContours(imgd2,[box],0,(0,0,255),2)
+
+		A = pts_in * pts_in * pts_in
+		B = area * math.log10(area)
+		avr = A/B
+
+		print("PTS/AREA", A, B)
+		print("AVR", avr)
+		return avr
+
+	points_dict = {}
+	for poly in itertools.combinations(cnt, 4):
+		pts = na(__poly_sort(list(map(list, poly)))).astype(int)
+		if not cv2.isContourConvex(pts): continue
+		score = __poly_score(pts, points_pred)
+		points_dict[score] = pts
+	
+	A = collections.OrderedDict(sorted(points_dict.items())[::-1])
+	K = next(iter(A)); L = A[K]
+	points_main = L
+	
+	print("GET --> ", K)
+	
+	# [debug] ------------------------------------------------------------------
+	imgd = copy(img)
+	imgd = debug_lines(imgd, lines_pred, size=3, color=(255,255,255))
+	imgd = debug_points(imgd, points, size=5, color=(255,0,0))
+	imgd = debug_points(imgd, points_okay, size=7, color=(0,255,0))
+	imgd = debug_points(imgd, points_pred, size=5, color=(0,0,255))
+	save(debug_path()+"debug_pamg.jpg", imgd)
+
+	imgd2 = debug_points(imgd2, points_main, size=7, color=(0,255,0))
+	imgd2 = debug_points(imgd2, cnt, size=5, color=(0,0,255))
+	save(debug_path()+"debug_pamg_all.jpg", imgd2)
+	# [debug] ------------------------------------------------------------------
+
+	return points_main
+
+################################################################################
+
+def chess_split(img):
+	"""Given a board image, returns an array of 64 smaller images."""
+	arr = []; img = na(img)
+	sq_len = np.shape(img)[0] / 8
+	for i in range(8):
+		for j in range(8):
+			arr.append(img[int(i * sq_len) : int((i + 1) * sq_len), \
+					       int(j * sq_len) : int((j + 1) * sq_len)])
+	return arr
+
+################################################################################
+
+def main(args, image):
+	global NC_LAYER
+
+	# --- 1 step --- read & enhance input image --------------------------------
+	print("image:\t {}x{}".format(*np.shape(image)))
+	IMG = ImageObject(image) # resize for speed
+
+	# --- 2 step --- find all possible lines (that makes sense) ----------------
+	lines_all = FAPL(IMG['main']) # original FAPL
+	lines = rFAPL(IMG['main'], lines_all) # use (r)educed version
+	print("lines:\t {} --> {}".format(len(lines_all), len(lines)))
+
+	# XXX: for debug
+	img_debug_fapl = copy(IMG['test'])
+	img_debug_fapl = debug_lines(img_debug_fapl, lines,     color=(0,255,0))
+	img_debug_fapl = debug_lines(img_debug_fapl, lines_all, color=(0,0,255))
+	save(debug_path()+"debug_fapl.jpg", img_debug_fapl)
+	# (red, lines_all), (green, lines)
+
+	# --- 3 step --- find interesting intersections (potentially a mesh grid) --
+	points = PAMG(IMG['main'], lines, IMG.shape) # use detector
+	print("points:\t {}/4".format(len(points))) # FIXME: return lines
+
+	# --- 4 step --- last layer reproduction (for chessboard corners) ----------
+	
+	pts = points
+	pco = pyclipper.PyclipperOffset()
+	pco.AddPath(pts, pyclipper.JT_MITER, pyclipper.ET_CLOSEDPOLYGON)
+	pts = pco.Execute(60)[0] # 70/75 is best (with buffer)
+	
+	img_debug_clip = copy(IMG['test'])
+	img_debug_clip = debug_points(img_debug_clip, pts, color=(0,255,0))
+	img_debug_clip = debug_points(img_debug_clip, points, color=(255,0,0))
+	cv2.drawContours(img_debug_clip,[na(pts)],0,(255,255,255),2)
+	cv2.drawContours(img_debug_clip,[na(points)],0,(255,255,255),2)
+	save(debug_path()+"debug_clip.jpg", img_debug_clip)
+	
+	if len(pts) != 4: errn("pyclipper cannot offset this polygon (FIXME)")
+
+	# --- 5 step --- preparation for next layer (deep analysis) ----------------
+	IMG.crop(pts); save(debug_path()+"final.jpg", IMG['orig'])
+	NC_LAYER -= 1
+
+	if NC_LAYER == 0 and args.pieces:
+		imgs = chess_split(IMG['orig'])
+		for key, img in enumerate(imgs):
+			save(debug_path()+str(key)+".jpg", img)
+
+################################################################################
+
+if __name__ == "__main__":
+	p = argparse.ArgumentParser(description=\
+	'Find, crop and create FEN from image.')
+
+	p.add_argument('filename', type=str,
+	help='input image, usually with chessboard ;-)')
+	p.add_argument('--pieces', default=False, action="store_true")
+
+	args = p.parse_args()
+	
+	if not os.path.isfile(args.filename):
+		__orig = args.filename
+		args.filename = 'test/in/%s.jpg' % args.filename
+		os.system("rm {}*".format(NC_OUTPUT))
+
+	print(args)
+
+	def __lie(): print("\n=== LAYER {} ===\n".format(NC_LAYER))
+
+	__lie(); main(args, image=load(args.filename))
+
+	while (NC_LAYER != 0):
+		__lie(); main(args, image=load(debug_path(d=+1)+'final.jpg'))
+	
+	os.system("cp {}final.jpg test/out/{}.jpg".format(debug_path(d=+1), __orig))

@@ -1,0 +1,8 @@
+.DS_Store
+*.pyc
+
+data/models/checkpoint
+data/models/pamg-*
+
+test/steps/*
+test/out/*

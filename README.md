@@ -22,10 +22,10 @@ FAPL (thermal lines) that can be widely used for other tasks in computer vision.
 
 **Files:**
 
-```
-./detect <filename>          # generate FEN from photo
-./dataset                    # prepare a dataset
-./train                      # learn PAMG (neural network)
+```bash
+$ python3 detect <filename>          # generate FEN from photo
+$ python3 dataset                    # prepare a dataset
+$ python3 train                      # learn PAMG (neural network)
 ```
 
 **Dependencies:**

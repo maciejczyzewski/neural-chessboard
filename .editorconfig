@@ -1,5 +1,3 @@
-root = true
-
 [*]
-indent_style = tabs
 indent_size = 4
+indent_style = tab

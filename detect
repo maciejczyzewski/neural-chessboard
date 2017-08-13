@@ -183,6 +183,11 @@ def FAPL(img, thresh=150):
 		lines_found = list(fapl_detector(fapl_canny(tmp), thresh)); i += 1
 		lines += lines_found; print("filter:{} {} -> {}".format(i, \
 				arr, len(lines_found)))
+		# DEBUG
+		imgd = copy(fapl_canny(tmp))
+		imgd = cv2.cvtColor(imgd, cv2.COLOR_GRAY2RGB)
+		imgd = debug_lines(imgd, lines_found, size=2, color=(0,255,0))
+		save(debug_path()+"debug_fapl_{}.jpg".format(i), imgd)
 	return lines
 
 def rFAPL(img, lines):
@@ -330,11 +335,16 @@ def pamg_detector(img):
 
 	hashid = str(hash(img.tostring()))
 
+	#save(debug_path()+"debug_PP_{}_1.jpg".format(hashid), img) # debug
 	img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+	#save(debug_path()+"debug_PP_{}_2.jpg".format(hashid), img) #debug
 	img = cv2.threshold(img, 0, 255, cv2.THRESH_OTSU)[1]
+	#save(debug_path()+"debug_PP_{}_3.jpg".format(hashid), img) #debug
 	img = cv2.Canny(img, 0, 255)
+	#save(debug_path()+"debug_PP_{}_4.jpg".format(hashid), img) #debug
 	
 	img = cv2.resize(img, (21, 21), interpolation=cv2.INTER_CUBIC)
+	#save(debug_path()+"debug_PP_{}_5.jpg".format(hashid), img) #debug
 	X = [np.where(img>int(255/2), 1, 0).ravel()]
 	X = X[0].reshape([-1, 21, 21, 1])
 
@@ -344,18 +354,31 @@ def pamg_detector(img):
 	#	save("test/out/"+hashid+".jpg", img)
 	# [debug] ------------------------------------------------------------------
 
+	#save(debug_path()+"debug_PP_{}_gem_0.jpg".format(hashid), img) #debug
 	img = cv2.dilate(img, None)
+	#save(debug_path()+"debug_PP_{}_gem_1.jpg".format(hashid), img) #debug
 	mask = cv2.copyMakeBorder(img, top=1, bottom=1, left=1, right=1,
 		borderType=cv2.BORDER_CONSTANT, value=[255,255,255])
 	mask = cv2.bitwise_not(mask); i = 0
+	#save(debug_path()+"debug_PP_{}_gem_2.jpg".format(hashid), mask) #debug
 	_1, contours, _2 = cv2.findContours(mask,cv2.RETR_EXTERNAL,
 				                             cv2.CHAIN_APPROX_NONE)
-		
+	
+	#_c = copy(_1)
+	#_c = cv2.cvtColor(_c, cv2.COLOR_GRAY2RGB)
+	_c = np.zeros((23,23,3), np.uint8)
+
 	for cnt in contours:
 		(x,y),radius = cv2.minEnclosingCircle(cnt); x,y=int(x),int(y)
 		approx = cv2.approxPolyDP(cnt,0.1*cv2.arcLength(cnt,True),True)
-		if len(approx) == 4 and radius < 14: i += 1
+		if len(approx) == 4 and radius < 14:
+			cv2.drawContours(_c, [cnt], 0, (0,255,0), 1)
+			i += 1
+		else:
+			cv2.drawContours(_c, [cnt], 0, (0,0,255), 1)
 	
+	#save(debug_path()+"debug_PP_{}_gem_3.jpg".format(hashid), _c) #debug
+
 	if i == 4: return (True, 1)
 
 	# --> like four rectangle feature (but the hard way)
@@ -404,6 +427,10 @@ def PAMG(img, lines, shape, size=10):
 	# [debug] ------------------------------------------------------------------
 
 	points_okay = []
+
+	points_okay1 = []
+	points_okay2 = []
+	
 	for pt in points:
 		# pixels are in integers
 		pt = list(map(int, pt))
@@ -420,7 +447,16 @@ def PAMG(img, lines, shape, size=10):
 		if dimg_shape[0] <= 0 or dimg_shape[1] <= 0: continue
 
 		# use neural network
-		if not pamg_detector(dimg)[0]: continue
+		re_pamg = pamg_detector(dimg)
+		if not re_pamg[0]: continue
+
+		# XXX: for debug only
+		if type(re_pamg[1]) == int:
+			points_okay1 += [pt]
+		#	save(debug_path()+"debug_PP_ge_{}.jpg".format(hash(str(pt))), dimg)
+		else:
+			points_okay2 += [pt]
+		#	save(debug_path()+"debug_PP_ne_{}.jpg".format(hash(str(pt))), dimg)
 
 		# add if okay
 		points_okay += [pt]
@@ -482,6 +518,7 @@ def PAMG(img, lines, shape, size=10):
 			if t: points_pred += [pt]
 			else: points_debug += [pt]
 
+	points_pred2 = pamg_cluster(points_pred)
 	points_pred = pamg_cluster(points_okay + points_pred)
 	#cnt = pamg_cluster(dd.concave.concaveHull(na(points_pred), 3))
 	cnt = points_pred
@@ -553,11 +590,19 @@ def PAMG(img, lines, shape, size=10):
 	imgd = debug_lines(imgd, lines_pred, size=3, color=(255,255,255))
 	imgd = debug_points(imgd, points, size=5, color=(255,0,0))
 	imgd = debug_points(imgd, points_okay, size=7, color=(0,255,0))
-	imgd = debug_points(imgd, points_pred, size=5, color=(0,0,255))
+	#imgd = debug_points(imgd, points_okay1, size=7, color=(0,255,0))
+	#imgd = debug_points(imgd, points_okay2, size=7, color=(0,255,255))
+	imgd = debug_points(imgd, points_pred2, size=5, color=(0,0,255))
 	save(debug_path()+"debug_pamg.jpg", imgd)
 
-	imgd2 = debug_points(imgd2, points_main, size=7, color=(0,255,0))
-	imgd2 = debug_points(imgd2, cnt, size=5, color=(0,0,255))
+	imgd3 = copy(img)
+	imgd3 = debug_points(imgd3, points, size=5, color=(255,0,0))
+	imgd3 = debug_points(imgd3, points_okay1, size=7, color=(0,255,0))
+	imgd3 = debug_points(imgd3, points_okay2, size=7, color=(0,255,255))
+	save(debug_path()+"debug_pamg2.jpg", imgd3)
+
+	imgd2 = debug_points(imgd2, points_main, color=(255,0,0))
+	imgd2 = debug_points(imgd2, cnt, size=7, color=(0,255,0))
 	save(debug_path()+"debug_pamg_all.jpg", imgd2)
 	# [debug] ------------------------------------------------------------------
 
@@ -641,6 +686,7 @@ if __name__ == "__main__":
 		__orig = args.filename
 		args.filename = 'test/in/%s.jpg' % args.filename
 		os.system("rm {}*".format(NC_OUTPUT))
+		print("rm {}*".format(NC_OUTPUT))
 
 	print(args)
 

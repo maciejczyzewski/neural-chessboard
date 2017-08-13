@@ -1,10 +1,10 @@
+> _Computer Vision! Machine learning! A E S T H E T I C!_
+
 ![](docs/animated.gif)
 
 # Neural Chessboard
 
 An Extremely Efficient Chess-board Detection for Non-trivial Photos
-
-> _Computer Vision! Machine learning! A E S T H E T I C!_
 
 ----
 

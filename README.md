@@ -48,6 +48,10 @@ $ python3 train                      # learn PAMG (neural network)
 
 ----
 
+**Raw Process:**
+
+![](docs/appendixA.jpg)
+
 **BONUS (old gif):**
 
 ![](docs/steps.gif)

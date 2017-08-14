@@ -23,8 +23,11 @@ FAPL (thermal lines) that can be widely used for other tasks in computer vision.
 **Files:**
 
 ```bash
-$ python3 detect <filename>          # generate FEN from photo
-$ python3 dataset                    # prepare a dataset
+$ # basic
+$ python3 detect <filename>          # detect and crop chess-board from a photo
+$ python3 fen <filename>             # generate FEN from a cropped photo
+$ # utils
+$ python3 dataset                    # prepare a dataset (for detector)
 $ python3 train                      # learn PAMG (neural network)
 ```
 
@@ -36,8 +39,15 @@ $ python3 train                      # learn PAMG (neural network)
 - [Tensorflow](https://www.tensorflow.org/) (with [tflearn](https://github.com/tflearn/tflearn) support)
 - [Networkx](https://networkx.github.io/) and [Pyclipper](https://github.com/greginvm/pyclipper)
 
+**TODO:**
+
+- [X] **Board Detection**: _detect board and segment into 8x8 squares_
+	> "An Extremely Efficient Chess-board Detection for Non-trivial Photos" -- M. A. C.
+- [ ] **Piece Recognition**: _identify chess pieces from a cropped board_
+	> (currently using Jialin Ding method, but we are preparing something completely new)
+
 ----
 
-**BONUS:**
+**BONUS (old gif):**
 
 ![](docs/steps.gif)

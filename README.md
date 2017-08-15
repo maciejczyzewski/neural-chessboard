@@ -42,7 +42,7 @@ $ python3 train                      # learn PAMG (neural network)
 **TODO:**
 
 - [X] **Board Detection**: _detect board and segment into 8x8 squares_
-	> "An Extremely Efficient Chess-board Detection for Non-trivial Photos" -- M. A. C.
+	> ["An Extremely Efficient Chess-board Detection for Non-trivial Photos"](https://arxiv.org/abs/1708.03898) -- M. A. C.
 - [ ] **Piece Recognition**: _identify chess pieces from a cropped board_
 	> (currently using Jialin Ding method, but we are preparing something completely new)
 

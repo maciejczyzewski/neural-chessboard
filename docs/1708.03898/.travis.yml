@@ -1,0 +1,13 @@
+os: linux
+sudo: false
+
+notifications:
+  email: false
+
+addons:
+  apt:
+    packages:
+    - texlive-full
+
+script: make travis
+

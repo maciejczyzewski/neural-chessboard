@@ -1,0 +1,36 @@
+%auto-ignore
+\documentclass{standalone}
+
+\usepackage{graphicx}
+\usepackage{tikz}
+
+\begin{document}
+\begin{tikzpicture}
+\node[inner sep=0pt,align=center]
+(pamg_1) at (0,0)
+	{\includegraphics[width=.15\textwidth]{figure6_o1.jpg}\\[1em]
+	 \includegraphics[width=.15\textwidth]{figure6_n1.jpg}};
+\node[inner sep=0pt,align=center]
+(pamg_2) at (5,0)
+	{\includegraphics[width=.15\textwidth]{figure6_o2.jpg}\\[1em]
+	 \includegraphics[width=.15\textwidth]{figure6_n2.jpg}};
+\node[inner sep=0pt,align=center]
+(pamg_3) at (10,0)
+	{\includegraphics[width=.15\textwidth]{figure6_o3.jpg}\\[1em]
+	 \includegraphics[width=.15\textwidth]{figure6_n3.jpg}};
+\node[inner sep=0pt,align=center]
+(pamg_4) at (15,0)
+	{\includegraphics[width=.15\textwidth]{figure6_o4.jpg}\\[1em]
+	 \includegraphics[width=.15\textwidth]{figure6_n4.jpg}};
+\draw[->,thick,shorten >=6pt,shorten <=6pt] (pamg_1) -- (pamg_2)
+	node[midway,fill=white,align=center,rotate=90,anchor=north,yshift=0.4cm]
+	{\huge grayscale};
+\draw[->,thick,shorten >=6pt,shorten <=6pt] (pamg_2) -- (pamg_3)
+	node[midway,fill=white,align=center,rotate=90,anchor=north,yshift=0.4cm]
+	{\huge thresh\\OTSU};
+\draw[->,thick,shorten >=6pt,shorten <=6pt] (pamg_3) -- (pamg_4)
+	node[midway,fill=white,align=center,rotate=90,anchor=north,yshift=0.4cm]
+	{\huge canny};
+\end{tikzpicture}
+\end{document}
+\documentclass{standalone}

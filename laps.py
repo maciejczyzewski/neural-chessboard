@@ -1,11 +1,12 @@
 import utils, debug, deps
 
-import tflearn
 import collections
 import cv2, numpy as np
 import scipy, scipy.cluster
 
-NC_LAPS_MODEL = tflearn.DNN(deps.laps.network())
+from tflearn import DNN
+
+NC_LAPS_MODEL = DNN(deps.laps.network())
 NC_LAPS_MODEL.load('data/models/laps.tflearn')
 
 ################################################################################

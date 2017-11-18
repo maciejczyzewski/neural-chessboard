@@ -95,7 +95,6 @@ def LLR(img, points, lines):
 								na(l1[0])-na(   x)))/dx
 	# ---
 
-	good_lines = []                       # nosnik "dobrych" linii
 	pregroup = [[], []]                   # podzial na 2 grupy (dla ramki)
 	S = {}                                # ranking ramek // wraz z wynikiem
 
@@ -189,14 +188,6 @@ def LLR(img, points, lines):
 	pregroup[0] = llr_unique(pregroup[0])
 	pregroup[1] = llr_unique(pregroup[1])
 
-	print(alfa, beta)
-
-	# (1) z jakiegos powodu mamy straszne szumy
-	# if len(points) < 49/4 and len(lines) > 49/1.5:
-	#	print("CAPTAIN, WE HAVE A PROBLEM!")
-	#	rect = cv2.minAreaRect(na(llr_polysort(llr_normalize(ring))))
-	#	box = cv2.boxPoints(rect); return llr_normalize(np.int0(box))
-
 	debug.image(img) \
 		.lines(lines, color=(0,0,255)) \
 		.points(points, color=(0,0,255)) \
@@ -222,9 +213,11 @@ def LLR(img, points, lines):
 	S = collections.OrderedDict(sorted(S.items()))              # max
 	four_points = llr_normalize(S[next(iter(S))])               # score
 
+	# XXX: pomijanie warst, lub ich wybor? (jesli mamy juz okay)
+	# XXX: wycinanie pod sam koniec? (modul wylicznia ile warstw potrzebnych)
+
 	print("POINTS:", len(points))
 	print("LINES:", len(lines))
-	print("GOOD:", len(good_lines))
 
 	debug.image(img).points(four_points).save("llr_four_points")
 

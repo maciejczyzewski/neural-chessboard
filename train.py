@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import h5py, tflearn
+import h5py
 import numpy as np
 import sys, deps
 import glob, os
+
+from tflearn import DNN
 
 print("---- FASTEN YOUR SEATBELTS -----") # FIXME
 print("If it's slow, compile protobuf and tensorflow from source!")
@@ -39,7 +41,7 @@ def train_network(model, X, Y, n=50):
 
 def load_model(name, best=False):
 	global NC_MODELS, NC_PATH_MODELS
-	model = tflearn.DNN(NC_MODELS[name]['network'], tensorboard_verbose=3,
+	model = DNN(NC_MODELS[name]['network'], tensorboard_verbose=3,
 		best_checkpoint_path=NC_PATH_MODELS + '{}-'.format(name.lower()))
 	best_path = NC_PATH_MODELS + '{}.tflearn'.format(name.lower())
 	if best and os.path.isfile(best_path): model.load(best_path)

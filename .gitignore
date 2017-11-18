@@ -5,7 +5,7 @@ docs/1708.03898/output
 docs/1708.03898/arxiv
 
 data/models/checkpoint
-data/models/pamg-*
+data/models/laps-*
 
 test/steps/*
 test/out/*

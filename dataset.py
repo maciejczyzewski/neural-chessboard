@@ -7,9 +7,9 @@ import numpy as np
 
 shuffle_data = True # option
 
-dataset_path  = 'data/train/pamg.hdf5'
-ok_train_path = 'data/train/pamg/ok/*.jpg'
-no_train_path = 'data/train/pamg/no/*.jpg'
+dataset_path  = 'data/train/laps.hdf5'
+ok_train_path = 'data/train/laps/ok/*.jpg'
+no_train_path = 'data/train/laps/no/*.jpg'
 
 ok_addrs = glob.glob(ok_train_path) # 0
 no_addrs = glob.glob(no_train_path) # 1

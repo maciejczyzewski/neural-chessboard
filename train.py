@@ -17,7 +17,7 @@ NC_PATH_MODELS = 'data/models/'
 NC_PATH_DATASET = 'data/train/'
 
 NC_MODELS = {
-	'PAMG': {'network': deps.pamg.network(), 'labels': None},
+	'LAPS': {'network': deps.laps.network(), 'labels': None},
 	'MAIN': {'network': None,                'labels': None}
 }
 
@@ -33,7 +33,7 @@ def read_dataset(name):
 
 def train_network(model, X, Y, n=50):
 	model.fit(X, Y, show_metric=True, snapshot_step=20, \
-					n_epoch=n, validation_set=0.4, shuffle=True)
+					n_epoch=n, validation_set=0.5, shuffle=True)
 	# validation_set=0.2, shuffle=True (BEST)
 	return model
 
@@ -70,8 +70,8 @@ def save_model(name):
 
 ################################################################################
 
-print("[FIXME]: only PAMG model is supported")
-NAME = 'PAMG'.upper()
+print("[FIXME]: only LAPS model is supported")
+NAME = 'LAPS'.upper()
 model = train_network(load_model(NAME, best=True),
 		*read_dataset(NAME), n=int(sys.argv[1]))
 save_model(NAME)

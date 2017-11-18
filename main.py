@@ -3,8 +3,8 @@ print("<<< \x1b[5;32;40m neural-chessboard \x1b[0m >>>")
 
 from config import *
 from utils import ImageObject
-from fapl import pFAPL, FAPL, fapl_tendency #== step 1
-from pamg import PAMG                       #== step 2
+from slid import pSLID, SLID, slid_tendency #== step 1
+from laps import LAPS                       #== step 2
 from llr import LLR, llr_pad                #== step 3
 
 import cv2; load = cv2.imread
@@ -20,24 +20,27 @@ def layer():
 	print(utils.ribb("==", sep="="), "\n")
 
 	# --- 1 step --- find all possible lines (that makes sense) ----------------
-	print(utils.ribb(utils.head("FAPL"), utils.clock(), "--- 1 step "))
-	segments = pFAPL(NC_IMAGE['main'])
-	raw_lines = FAPL(NC_IMAGE['main'], segments)
-	lines = fapl_tendency(raw_lines)
+	print(utils.ribb(utils.head("SLID"), utils.clock(), "--- 1 step "))
+	segments = pSLID(NC_IMAGE['main'])
+	raw_lines = SLID(NC_IMAGE['main'], segments)
+	lines = slid_tendency(raw_lines)
 
 	# --- 2 step --- find interesting intersections (potentially a mesh grid) --
-	print(utils.ribb(utils.head("PAMG"), utils.clock(), "--- 2 step "))
-	points = PAMG(NC_IMAGE['main'], lines)
+	print(utils.ribb(utils.head("LAPS"), utils.clock(), "--- 2 step "))
+	points = LAPS(NC_IMAGE['main'], lines)
 
 	# --- 3 step --- last layer reproduction (for chessboard corners) ----------
 	print(utils.ribb(utils.head(" LLR"), utils.clock(), "--- 3 step "))
-	four_points = llr_pad(LLR(NC_IMAGE['main'], points))
+	inner_points = LLR(NC_IMAGE['main'], points, lines)
+	four_points = llr_pad(inner_points) # padcrop
 
 	# --- 4 step --- preparation for next layer (deep analysis) ----------------
 	print(utils.ribb(utils.head("   *"), utils.clock(), "--- 4 step "))
 	print(four_points)
 	try: NC_IMAGE.crop(four_points)
-	except: utils.warn("niestety, ale kolejna warstwa nie jest potrzebna")
+	except:
+		utils.warn("niestety, ale kolejna warstwa nie jest potrzebna")
+		NC_IMAGE.crop(inner_points)
 
 	print("\n")
 

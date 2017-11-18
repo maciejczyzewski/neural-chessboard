@@ -1,2 +1,2 @@
 from . import geometry
-from . import pamg
+from . import laps

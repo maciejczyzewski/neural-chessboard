@@ -43,9 +43,11 @@ class ImageDebug(object):
 		self.img = points(self.img, _points, color=color, size=size)
 		return self
 
-	def save(self, filename):
+	def save(self, filename, prefix=True):
 		global counter; counter += 1
-		if NC_DEBUG: save("test/steps/__debug_" + "%04d"%int(counter) + "_" + \
+		if prefix: __prefix = "__debug_"+"%04d"%int(counter)+"_"
+		else:      __prefix = ""
+		if NC_DEBUG: save("test/steps/" + __prefix + \
 				filename + ".jpg", self.img)
 
 image = ImageDebug

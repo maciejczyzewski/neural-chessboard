@@ -39,7 +39,7 @@ def llr_polysort(pts):
 	pts.sort(key=__sort)
 	return pts
 
-def llr_polyscore(cnt, pts, alfa=5, beta=2):
+def llr_polyscore(cnt, pts, cen, alfa=5, beta=2):
 	a = cnt[0]; b = cnt[1]
 	c = cnt[2]; d = cnt[3]
 
@@ -48,23 +48,93 @@ def llr_polyscore(cnt, pts, alfa=5, beta=2):
 	t2 = area < (4 * alfa * alfa) * 5
 	if t2: return 0
 
+	gamma = alfa/1.5#alfa**(1/2)
+	#print("ALFA", alfa)
+
 	# (2) # za malo punktow
 	pco = pyclipper.PyclipperOffset()
 	pco.AddPath(cnt, pyclipper.JT_MITER, pyclipper.ET_CLOSEDPOLYGON)
-	pcnt = matplotlib.path.Path(pco.Execute(alfa/2)[0])
-	pts_in = min(np.count_nonzero(pcnt.contains_points(pts)), 49)
-	t1 = pts_in < min(len(pts), 49) - 1.5 * beta
+	pcnt = matplotlib.path.Path(pco.Execute(gamma)[0]) # FIXME: alfa/1.5
+	wtfs = pcnt.contains_points(pts)
+	pts_in = min(np.count_nonzero(wtfs), 49)
+	t1 = pts_in < min(len(pts), 49) - 2 * beta - 1
 	if t1: return 0
-	
+
+	A = pts_in
+	B = area
+
 	# (3)
 	# FIXME: punkty za kwadratowosci? (przypadki z L shape)
+	nln = lambda l1, x, dx: \
+		np.linalg.norm(np.cross(na(l1[1])-na(l1[0]),
+								na(l1[0])-na(   x)))/dx
+	pcnt_in = []; i = 0
+	for pt in wtfs:
+		if pt: pcnt_in += [pts[i]]
+		i += 1
+	def __convex_approx(points, alfa=0.001):
+		hull = scipy.spatial.ConvexHull(na(points)).vertices
+		cnt = na([points[pt] for pt in hull])
+		return cnt
+		#approx = cv2.approxPolyDP(cnt,alfa*\
+			#	 cv2.arcLength(cnt,True),True)
+		#return llr_normalize(itertools.chain(*approx))
+	#hull = scipy.spatial.ConvexHull(na(pcnt_in)).vertices
+	#cnt_in = na([pcnt_in[pt] for pt in hull])
 
-	A = pts_in * pts_in * pts_in
-	B = area * area * math.log10(area) * \
-		max(49 - pts_in, 1)
+	cnt_in = __convex_approx(na(pcnt_in))
 
-	if B == 0: return 0
-	return A/B
+	points = cnt_in
+	x = [p[0] for p in points]          # szukamy punktu
+	y = [p[1] for p in points]          # centralnego skupiska
+	cen2 = (sum(x) / len(points), \
+			sum(y) / len(points))
+
+	G = np.linalg.norm(na(cen)-na(cen2))
+
+	#S = cv2.contourArea(na(cnt_in))
+	#if S > B: E += abs(S - B)
+
+	"""
+	cnt_in = __convex_approx(na(pcnt_in))
+	S = cv2.contourArea(na(cnt_in))
+	if S < B: E += abs(S - B)
+
+	cnt_in = __convex_approx(na(list(cnt_in)+list(cnt)))
+	S = cv2.contourArea(na(cnt_in))
+	if S > B: E += abs(S - B)
+	"""
+
+	a = [cnt[0], cnt[1]]
+	b = [cnt[1], cnt[2]]
+	c = [cnt[2], cnt[3]]
+	d = [cnt[3], cnt[0]]
+	lns = [a, b, c, d]
+	E = 0; F = 0
+	for l in lns:
+		d = np.linalg.norm(na(l[0])-na(l[1]))
+		for p in cnt_in:
+			r = nln(l,p,d)
+			if r < gamma:
+				E += r
+				F += 1
+	if F == 0: return 0
+	E /= F
+	# print("PTS_IN", pts_in, "|", "AREA", area, "-->", A/B)
+	
+	if B == 0 or A == 0: return 0
+	
+	C = (E/A+1)**3       # rownosc
+	D = (G/A**(1.5)+1)  # centroid
+	# R = (A**3)/(C * (B**3) * D)
+	R = (A**4)/(C * (B**2) * D)
+	#R = A/(B + abs(E-area)**2)
+	# print(R, E, B, A, C, G, D)
+	print(R*(10**12), A, "|", B, C, D, "|", E, G)
+	return R
+	#                  R        E        B     A  abs(E-B)
+	# 0.0036616950969009555 128126.0 139323.0 41 11197.0
+	# 0.00581757739455641   137893.0 145112.5 42 7219.5
 
 ################################################################################
 
@@ -104,7 +174,7 @@ def LLR(img, points, lines):
 	import sklearn.cluster
 	__points = {}; points = llr_polysort(points); __max, __points_max = 0, []
 	alfa = math.sqrt(cv2.contourArea(na(points))/49)
-	X = sklearn.cluster.DBSCAN(eps=alfa*3).fit(points) # **(1.3)
+	X = sklearn.cluster.DBSCAN(eps=alfa*4).fit(points) # **(1.3)
 	for i in range(len(points)): __points[i] = []
 	for i in range(len(points)):
 		if X.labels_[i] != -1: __points[X.labels_[i]] += [points[i]]
@@ -145,10 +215,10 @@ def LLR(img, points, lines):
 		b = [int((1-t)*x_0+t*x_1), int((1-t)*y_0+t*y_1)][::-1]
 
 		poly1 = llr_polysort([[0,0], [0, img.shape[0]], a, b])
-		s1 = llr_polyscore(na(poly1), points, beta=beta, alfa=alfa/2)
+		s1 = llr_polyscore(na(poly1), points, centroid, beta=beta, alfa=alfa/2)
 		poly2 = llr_polysort([a, b, \
 				[img.shape[1],0], [img.shape[1],img.shape[0]]])
-		s2 = llr_polyscore(na(poly2), points, beta=beta, alfa=alfa/2)
+		s2 = llr_polyscore(na(poly2), points, centroid, beta=beta, alfa=alfa/2)
 		
 		return [a, b], s1, s2
 
@@ -163,10 +233,10 @@ def LLR(img, points, lines):
 		b = [int((1-t)*x_0+t*x_1), int((1-t)*y_0+t*y_1)]
 
 		poly1 = llr_polysort([[0,0], [img.shape[1], 0], a, b])
-		s1 = llr_polyscore(na(poly1), points, beta=beta, alfa=alfa/2)
+		s1 = llr_polyscore(na(poly1), points, centroid, beta=beta, alfa=alfa/2)
 		poly2 = llr_polysort([a, b, \
 				[0, img.shape[0]], [img.shape[1], img.shape[0]]])
-		s2 = llr_polyscore(na(poly2), points, beta=beta, alfa=alfa/2)
+		s2 = llr_polyscore(na(poly2), points, centroid, beta=beta, alfa=alfa/2)
 
 		return [a, b], s1, s2
 
@@ -200,6 +270,7 @@ def LLR(img, points, lines):
 		.lines(pregroup[1], color=(255,0,0)) \
 	.save("llr_pregroups")
 	
+	print("---------------------")
 	for v in itertools.combinations(pregroup[0], 2):            # poziome
 		for h in itertools.combinations(pregroup[1], 2):        # pionowe
 			poly = laps_intersections([v[0], v[1], h[0], h[1]]) # przeciecia
@@ -207,11 +278,13 @@ def LLR(img, points, lines):
 			if len(poly) != 4: continue                         # jesl. nie ma
 			poly = na(llr_polysort(llr_normalize(poly)))        # sortuj
 			if not cv2.isContourConvex(poly): continue          # wypukly?
-			S[-llr_polyscore(poly, points, \
+			S[-llr_polyscore(poly, points, centroid, \
 				beta=beta, alfa=alfa/2)] = poly                 # dodaj
 
 	S = collections.OrderedDict(sorted(S.items()))              # max
-	four_points = llr_normalize(S[next(iter(S))])               # score
+	K = next(iter(S))
+	print("key --", K)
+	four_points = llr_normalize(S[K])               # score
 
 	# XXX: pomijanie warst, lub ich wybor? (jesli mamy juz okay)
 	# XXX: wycinanie pod sam koniec? (modul wylicznia ile warstw potrzebnych)
@@ -226,4 +299,4 @@ def LLR(img, points, lines):
 def llr_pad(four_points):
 	print(utils.call("llr_pad(four_points)"));pco = pyclipper.PyclipperOffset()
 	pco.AddPath(four_points, pyclipper.JT_MITER, pyclipper.ET_CLOSEDPOLYGON)
-	return pco.Execute(60)[0] # 70/75 is best (with buffer/for debug purpose)
+	return pco.Execute(60)[0] # 60,70/75 is best (with buffer/for debug purpose)

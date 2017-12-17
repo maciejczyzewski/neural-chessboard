@@ -3,11 +3,10 @@ import utils, debug, deps
 import collections
 import cv2, numpy as np
 import scipy, scipy.cluster
+from config import *
 
-from tflearn import DNN
-
-NC_LAPS_MODEL = DNN(deps.laps.network())
-NC_LAPS_MODEL.load('data/models/laps.tflearn')
+from keras.models import load_model
+NC_LAPS_MODEL = load_model('data/models/laps.h5')
 
 ################################################################################
 
@@ -40,8 +39,8 @@ def laps_detector(img):
 	img = cv2.Canny(img, 0, 255)	
 	img = cv2.resize(img, (21, 21), interpolation=cv2.INTER_CUBIC)
 	
-	# debug.image(img).save(str(hash(str(img))), prefix=False)
-	
+	imgd = img
+
 	X = [np.where(img>int(255/2), 1, 0).ravel()]
 	X = X[0].reshape([-1, 21, 21, 1])
 
@@ -71,8 +70,12 @@ def laps_detector(img):
 	t = a > b and b < 0.03 and a > 0.975
 
 	# decision
-	if t: return (True, pred[0])
-	else: return (False, pred[0])
+	if t:
+		#debug.image(imgd).save(str(hash(str(imgd))), prefix=False)
+		return (True, pred[0])
+	else:
+		#debug.image(imgd).save(str(hash(str(imgd))), prefix=False)
+		return (False, pred[0])
 
 ################################################################################
 

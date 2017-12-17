@@ -10,10 +10,12 @@ from llr import LLR, llr_pad                #== step 3
 import cv2; load = cv2.imread
 save = cv2.imwrite
 
+#NC_SCORE = -1
+
 ################################################################################
 
 def layer():
-	global NC_LAYER, NC_IMAGE
+	global NC_LAYER, NC_IMAGE#, NC_SCORE
 	
 	print(utils.ribb("==", sep="="))
 	print(utils.ribb("[%d] LAYER " % NC_LAYER, sep="="))
@@ -28,6 +30,9 @@ def layer():
 	# --- 2 step --- find interesting intersections (potentially a mesh grid) --
 	print(utils.ribb(utils.head("LAPS"), utils.clock(), "--- 2 step "))
 	points = LAPS(NC_IMAGE['main'], lines)
+	#print(abs(49 - len(points)), NC_SCORE)
+	#if NC_SCORE != -1 and abs(49 - len(points)) > NC_SCORE * 4: return
+	#NC_SCORE = abs(49 - len(points))
 
 	# --- 3 step --- last layer reproduction (for chessboard corners) ----------
 	print(utils.ribb(utils.head(" LLR"), utils.clock(), "--- 3 step "))

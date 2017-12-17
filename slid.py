@@ -6,13 +6,43 @@ import cv2, numpy as np
 import collections
 na = np.array
 
+"""
 NC_SLID_CLAHE = [[3,   (2, 6),    5], # @1
 		         [3,   (6, 2),    5], # @2
+				 [0,   (0, 0),    0]] # EE
+"""
+
+"""
+NC_SLID_CLAHE = [[4,   (2, 5),    5], # @1
+		         [4,   (5, 2),    5], # @2
+				 #[1,   (2, 2),   15], # @3
+				 [0,   (0, 0),    0]] # EE
+"""
+
+"""
+NC_SLID_CLAHE = [[2,   (1, 5),    5], # @1
+		         [2,   (5, 1),    5], # @2
+				 #[1,   (2, 2),   15], # @3
+				 [0,   (0, 0),    0]] # EE
+"""
+
+"""
+NC_SLID_CLAHE = [[3,   (2, 8),    5], # @1
+		         [3,   (8, 2),    5], # @2
+				 [5,   (4, 4),    5], # @3
+				 [0,   (0, 0),    0]] # EE
+"""
+
+# 7???
+# 4???
+NC_SLID_CLAHE = [[3,   (2, 6),    5], # @1
+		         [3,   (6, 2),    5], # @2
+				 [5,   (3, 3),    5], # @3
 				 [0,   (0, 0),    0]] # EE
 
 ################################################################################
 
-def slid_canny(img, sigma=0.33):
+def slid_canny(img, sigma=0.25):
 	"""apply Canny edge detector (automatic thresh)"""
 	v = np.median(img)
 	img = cv2.medianBlur(img, 5)
@@ -79,7 +109,9 @@ def SLID(img, segments):
 		return X[x]
 	def __un(a, b):
 		ia, ib = __fi(a), __fi(b)
-		X[ia] = __fi(ib); group[ib] |= group[ia]
+		X[ia] = ib; group[ib] |= group[ia]
+		#group[ia] = set()
+		#group[ia] = set()
 
 	# shortest path // height
 	nln = lambda l1, x, dx: \
@@ -92,11 +124,15 @@ def SLID(img, segments):
 
 		d1a, d2a = nln(l1, l2[0], da), nln(l1, l2[1], da)
 		d1b, d2b = nln(l2, l1[0], db), nln(l2, l1[1], db)
-		
-		d1, d2 = (d1a + d1b)/2, (d2a + d2b)/2
-
-		if d1 + d2 == 0: d1 += 0.00001 # [FIXME]: divide by 0
-		t1 = (da/(d1 + d2) > 7.5 and db/(d1 + d2) > 7.5)
+	
+		ds = 0.25 * (d1a + d1b + d2a + d2b) + 0.00001
+		#print(da, db, abs(da-db))
+		#print(int(da/ds), int(db/ds), "|", int(abs(da-db)), int(da+db),
+		#		int(da+db)/(int(abs(da-db))+0.00001))
+		alfa = 0.0625 * (da + db) #15
+		# FIXME: roznica???
+		#if d1 + d2 == 0: d1 += 0.00001 # [FIXME]: divide by 0
+		t1 = (da/ds > alfa and db/ds > alfa)
 		if not t1: return False # [FIXME]: dist???
 		return True
 
@@ -115,7 +151,6 @@ def SLID(img, segments):
 
 		#debug.image(img.shape).points(points, \
 		#	color=debug.color(), size=2).save("slid__" + str(hash(str(group))))
-
 		_, radius = cv2.minEnclosingCircle(na(points)); w = radius * (math.pi/2)
 		vx, vy, cx, cy = cv2.fitLine(na(points), cv2.DIST_L2, 0, 0.01, 0.01)
 		return [[int(cx-vx*w), int(cy-vy*w)], [int(cx+vx*w), int(cy+vy*w)]]
@@ -124,7 +159,7 @@ def SLID(img, segments):
 		h = hash(str(l))
 		t1 = l[0][0] - l[1][0]
 		t2 = l[0][1] - l[1][1]
-		hashmap[h] = l; group[h] = set([h])
+		hashmap[h] = l; group[h] = set([h]); X[h] = h
 		if abs(t1) < abs(t2): pregroup[0].append(l)
 		else:                 pregroup[1].append(l)
 
@@ -135,21 +170,33 @@ def SLID(img, segments):
 
 	for lines in pregroup:
 		for i in range(len(lines)):
+			l1 = lines[i]; h1 = hash(str(l1))
+			#print(h1, __fi(h1))
+			if (X[h1] != h1): continue
+			#if (__fi(h1) != h1): continue
 			for j in range(i+1, len(lines)):
-				l1, l2 = lines[i], lines[j]
+				l2 = lines[j]; h2 = hash(str(l2))
+				#if (__fi(h2) != h2): continue
+				if (X[h2] != h2): continue
+				#if (len(group[h2])==0): continue
 				if not __similar(l1, l2): continue
-				h1, h2 = hash(str(l1)), hash(str(l2))
 				__un(h1, h2) # union & find
+				# break # FIXME
 
 	__d = debug.image(img.shape)
 	for i in group:
-		if (__fi(i) != i): continue
+		#if (__fi(i) != i): continue
+		if (X[i] != i): continue
+		#if len(group[i]) == 0: continue
 		ls = [hashmap[h] for h in group[i]]
 		__d.lines(ls, color=debug.color())
 	__d.save("slid_all_groups")
 
 	for i in group:
-		if (__fi(i) != i): continue
+		#if (__fi(i) != i): continue
+		if (X[i] != i): continue
+		#if len(group[i]) == 0: continue
+		#if (__fi(i) != i): continue
 		raw_lines += [__analyze(group[i])]
 	debug.image(img.shape).lines(raw_lines).save("slid_final")
 

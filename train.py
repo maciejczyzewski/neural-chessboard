@@ -6,21 +6,17 @@ import numpy as np
 import sys, deps
 import glob, os
 
-from tflearn import DNN
+import keras.models
 
 print("---- FASTEN YOUR SEATBELTS -----") # FIXME
 print("If it's slow, compile protobuf and tensorflow from source!")
-
-# FIXME: cli + tensorboard (background process)
-# FIXME: dataset preparation from "d" script (labels)
-# FIXME: it should be more general (MAIN model compt.)
 
 NC_PATH_MODELS = 'data/models/'
 NC_PATH_DATASET = 'data/train/'
 
 NC_MODELS = {
-	'LAPS': {'network': deps.laps.network(), 'labels': None},
-	'MAIN': {'network': None,                'labels': None}
+	'LAPS': {'network': deps.laps.model, 'labels': None},
+	'MAIN': {'network': None,            'labels': None}
 }
 
 ################################################################################
@@ -31,44 +27,26 @@ def read_dataset(name):
 	h5f = h5py.File(path, 'r', driver='core')
 	X, Y = h5f['data'], h5f['labels']
 	X = X[()].reshape([-1, 21, 21, 1])
+	Y = Y[()].reshape([-1, 2])
 	return (X, Y)
 
 def train_network(model, X, Y, n=50):
-	model.fit(X, Y, show_metric=True, snapshot_step=20, \
-					n_epoch=n, validation_set=0.5, shuffle=True)
-	# validation_set=0.2, shuffle=True (BEST)
+	model.fit(X, Y, epochs=n, batch_size=64, shuffle="batch")
+	pred = model.predict(X); print("FINAL", np.mean(np.square(pred - Y)))
 	return model
 
 def load_model(name, best=False):
 	global NC_MODELS, NC_PATH_MODELS
-	model = DNN(NC_MODELS[name]['network'], tensorboard_verbose=3,
-		best_checkpoint_path=NC_PATH_MODELS + '{}-'.format(name.lower()))
-	best_path = NC_PATH_MODELS + '{}.tflearn'.format(name.lower())
-	if best and os.path.isfile(best_path): model.load(best_path)
+	model = NC_MODELS[name]['network']
+	best_path = NC_PATH_MODELS + '{}.h5'.format(name.lower())
+	if best and os.path.isfile(best_path):
+		model = keras.models.load_model(best_path)
 	return model
 
 def save_model(name):
 	global NC_PATH_MODELS
-	prefix = NC_PATH_MODELS + '{}-'.format(name.lower())
-	paths = glob.glob(prefix + '*.index')
-	if len(paths) == 0: return False
-	paths = [p.replace(prefix, '')\
-			  .replace('.index', '') for p in paths]
-	paths = sorted(map(int, paths))[::-1]; model_id = paths[0]
-	print('BEST: \t{}%'.format(float(model_id/100)))
-	files = ['data-00000-of-00001', 'index', 'meta']
-	for ext in files:
-		src = prefix + '{}.{}'.format(model_id, ext)
-		dst = NC_PATH_MODELS + '{}.tflearn.{}'.format(name.lower(), ext)
-		os.system('cp {} {}'.format(src, dst))
-		print('cp', src, dst)
-	paths.remove(model_id)
-	for mid in paths:
-		for ext in files:
-			tmp = prefix + '{}.{}'.format(mid, ext)
-			os.system('rm {}'.format(tmp))
-			print('rm', tmp)
-	return True
+	save_path = NC_PATH_MODELS + '{}.h5'.format(name.lower())
+	model.save(save_path)
 
 ################################################################################
 

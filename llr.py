@@ -245,10 +245,11 @@ def LLR(img, points, lines):
 			# (1) linia przechodzi blisko dobrego punktu
 			t1 = nln(l, p, __dis(*l)) < alfa
 			# (2) linia przechodzi przez srodek skupiska
-			t2 = nln(l, centroid, __dis(*l)) > alfa * 3 # 2.5
+			t2 = nln(l, centroid, __dis(*l)) > alfa * 2.5 # 3
 			# (3) linia nalezy do pierscienia
-			t3 = True if p in ring else False
-			if (t1 and t2) or (t1 and t3): # [1 and 2] or [1 and 3]
+			# t3 = True if p in ring else False
+			if t1 and t2:
+			#if (t1 and t2) or (t1 and t3 and t2): # [1 and 2] or [1 and 3 and 2]
 				tx, ty = l[0][0]-l[1][0], l[0][1]-l[1][1]
 				if abs(tx) < abs(ty): ll, s1, s2 = __v(l); o = 0
 				else:                 ll, s1, s2 = __h(l); o = 1

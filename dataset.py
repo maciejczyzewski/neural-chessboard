@@ -7,7 +7,7 @@ import numpy as np
 
 shuffle_data = True # option
 
-dataset_path  = 'data/train/laps.hdf5'
+dataset_path  = 'data/train/laps.h5'
 ok_train_path = 'data/train/laps/ok/*.jpg'
 no_train_path = 'data/train/laps/no/*.jpg'
 

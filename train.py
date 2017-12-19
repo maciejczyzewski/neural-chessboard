@@ -23,7 +23,7 @@ NC_MODELS = {
 
 def read_dataset(name):
 	global NC_PATH_DATASET
-	path = NC_PATH_DATASET + "{}.hdf5".format(name)
+	path = NC_PATH_DATASET + "{}.h5".format(name)
 	h5f = h5py.File(path, 'r', driver='core')
 	X, Y = h5f['data'], h5f['labels']
 	X = X[()].reshape([-1, 21, 21, 1])
@@ -31,6 +31,7 @@ def read_dataset(name):
 	return (X, Y)
 
 def train_network(model, X, Y, n=50):
+	if n == 0: return model
 	model.fit(X, Y, epochs=n, batch_size=64, shuffle="batch")
 	pred = model.predict(X); print("FINAL", np.mean(np.square(pred - Y)))
 	return model
@@ -38,6 +39,9 @@ def train_network(model, X, Y, n=50):
 def load_model(name, best=False):
 	global NC_MODELS, NC_PATH_MODELS
 	model = NC_MODELS[name]['network']
+	#best_path = NC_PATH_MODELS + '{}.weights.h5'.format(name.lower())
+	#if best and os.path.isfile(best_path):
+	#	model.load_weights(best_path)
 	best_path = NC_PATH_MODELS + '{}.h5'.format(name.lower())
 	if best and os.path.isfile(best_path):
 		model = keras.models.load_model(best_path)
@@ -47,6 +51,11 @@ def save_model(name):
 	global NC_PATH_MODELS
 	save_path = NC_PATH_MODELS + '{}.h5'.format(name.lower())
 	model.save(save_path)
+	save_model = NC_PATH_MODELS + '{}.model.json'.format(name.lower())
+	with open(save_model, "w") as json_file:
+		json_file.write(model.to_json())
+	save_weights = NC_PATH_MODELS + '{}.weights.h5'.format(name.lower())
+	model.save_weights(save_weights)
 
 ################################################################################
 

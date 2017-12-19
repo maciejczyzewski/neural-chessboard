@@ -1,4 +1,4 @@
-import os, sys, glob, argparse, utils
+import gc, os, sys, glob, argparse, utils
 print("<<< \x1b[5;32;40m neural-chessboard \x1b[0m >>>")
 
 from config import *
@@ -77,6 +77,7 @@ def test(args):
 		oname = iname.replace('in', 'out')
 		args.input = iname; args.output = oname
 		detect(args)
+		gc.collect()
 
 	print("TEST: %d images" % len(files))
 	
@@ -95,7 +96,8 @@ if __name__ == "__main__":
 	p.add_argument('--output', type=str, \
 			help='output path (default: output.jpg)')
 
-	os.system("rm test/steps/*.jpg") # FIXME: to jest bardzo grozne
+	#os.system("rm test/steps/*.jpg") # FIXME: to jest bardzo grozne
+	os.system("rm -rf test/steps; mkdir test/steps")
 
 	args = p.parse_args(); mode = str(args.mode[0])
 	modes = {'detect': detect, 'dataset': dataset, 'train': train, 'test': test}

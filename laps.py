@@ -5,9 +5,7 @@ import cv2, numpy as np
 import scipy, scipy.cluster
 from config import *
 
-from keras import backend as K
 from keras.models import model_from_json
-K.clear_session() # FIX: tensorflow#3388
 __laps_model = 'data/models/laps.model.json'
 __laps_weights = 'data/models/laps.weights.h5'
 NC_LAPS_MODEL = model_from_json(open(__laps_model, 'r').read())
@@ -76,7 +74,7 @@ def laps_detector(img):
 
 	# decision
 	if t:
-		debug.image(imgd).save(str(hash(str(imgd))), prefix=False)
+		#debug.image(imgd).save(str(hash(str(imgd))), prefix=False)
 		return (True, pred[0])
 	else:
 		#debug.image(imgd).save(str(hash(str(imgd))), prefix=False)

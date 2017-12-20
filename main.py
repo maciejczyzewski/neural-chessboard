@@ -7,6 +7,7 @@ from slid import pSLID, SLID, slid_tendency #== step 1
 from laps import LAPS                       #== step 2
 from llr import LLR, llr_pad                #== step 3
 
+from keras import backend as K
 import cv2; load = cv2.imread
 save = cv2.imwrite
 
@@ -77,7 +78,6 @@ def test(args):
 		oname = iname.replace('in', 'out')
 		args.input = iname; args.output = oname
 		detect(args)
-		gc.collect()
 
 	print("TEST: %d images" % len(files))
 	
@@ -106,3 +106,4 @@ if __name__ == "__main__":
 		utils.errn("hey, nie mamy takiej procedury!!! (wybrano: %s)" % mode)
 
 	modes[mode](args); print(utils.clock(), "done")
+	K.clear_session(); gc.collect() # FIX: tensorflow#3388

@@ -88,10 +88,12 @@ def pSLID(img, thresh=150):
 		debug.image(slid_canny(tmp)).lines(__segments).save("pslid_F%d" % i)
 	return segments
 
+all_points = []
 def SLID(img, segments):
 	# FIXME: zrobic 2 rodzaje haszowania (katy + pasy [blad - delta])
 	print(utils.call("SLID(img, segments)"))
-
+	
+	global all_points; all_points = []
 	pregroup, group, hashmap, raw_lines = [[], []], {}, {}, []
 
 	__cache = {}
@@ -145,14 +147,14 @@ def SLID(img, segments):
 		return points
 
 	def __analyze(group):
+		global all_points
 		points = []
 		for idx in group:
 			points += __generate(*hashmap[idx], 10)
-
-		#debug.image(img.shape).points(points, \
-		#	color=debug.color(), size=2).save("slid__" + str(hash(str(group))))
 		_, radius = cv2.minEnclosingCircle(na(points)); w = radius * (math.pi/2)
 		vx, vy, cx, cy = cv2.fitLine(na(points), cv2.DIST_L2, 0, 0.01, 0.01)
+		# debug.color()
+		all_points += points
 		return [[int(cx-vx*w), int(cy-vy*w)], [int(cx+vx*w), int(cy+vy*w)]]
 
 	for l in segments:
@@ -199,6 +201,10 @@ def SLID(img, segments):
 		#if (__fi(i) != i): continue
 		raw_lines += [__analyze(group[i])]
 	debug.image(img.shape).lines(raw_lines).save("slid_final")
+
+	debug.image(img.shape)\
+		.points(all_points, color=(0,255,0), size=2)\
+	.lines(raw_lines).save("slid_final2")
 
 	return raw_lines
 

@@ -124,13 +124,25 @@ def llr_polyscore(cnt, pts, cen, alfa=5, beta=2):
 	
 	if B == 0 or A == 0: return 0
 	
-	C = (E/A+1)**3       # rownosc
-	D = (G/A**(1.5)+1)  # centroid
-	# R = (A**3)/(C * (B**3) * D)
-	R = (A**4)/(C * (B**2) * D)
-	#R = A/(B + abs(E-area)**2)
-	# print(R, E, B, A, C, G, D)
+	#C = (E/A+1)**3       # rownosc
+	#D = (G/A**(1.5)+1)  # centroid
+	#R = (A**4)/(C * (B**2) * D)
+
+	#C = 1+(E/A**2)  # rownosc
+	#D = 1+(G/A**2)  # centroid
+	#R = (A**4)/(C * (B**2) * D)
+
+	# working
+	#C = 1+(E/A**1)  # rownosc
+	#D = 1+(G/A**2)  # centroid
+	#R = (A**4)/((B**2) * C * D)
+	
+	C = 1+(E/A)**(1/3)  # rownosc
+	D = 1+(G/A)**(1/5)  # centroid
+	R = (A**4)/((B**2) * C * D)
+
 	print(R*(10**12), A, "|", B, C, D, "|", E, G)
+	
 	return R
 	#                  R        E        B     A  abs(E-B)
 	# 0.0036616950969009555 128126.0 139323.0 41 11197.0
@@ -142,6 +154,7 @@ def llr_polyscore(cnt, pts, cen, alfa=5, beta=2):
 
 def LLR(img, points, lines):
 	print(utils.call("LLR(img, points, lines)"))
+	old = points
 
 	# --- otoczka
 	def __convex_approx(points, alfa=0.01):
@@ -259,6 +272,17 @@ def LLR(img, points, lines):
 	pregroup[0] = llr_unique(pregroup[0])
 	pregroup[1] = llr_unique(pregroup[1])
 
+	from laps import laps_intersections
+	debug.image(img) \
+		.lines(lines, color=(0,0,255)) \
+		.points(laps_intersections(lines), color=(255,0,0), size=2) \
+	.save("llr_debug_1")
+
+	debug.image(img) \
+		.points(laps_intersections(lines), color=(0,0,255), size=2) \
+		.points(old, color=(0,255,0)) \
+	.save("llr_debug_2")
+
 	debug.image(img) \
 		.lines(lines, color=(0,0,255)) \
 		.points(points, color=(0,0,255)) \
@@ -295,9 +319,31 @@ def LLR(img, points, lines):
 
 	debug.image(img).points(four_points).save("llr_four_points")
 
+	debug.image(img) \
+		.points(points, color=(0,255,0)) \
+ 		.points(four_points, color=(0,0,255)) \
+		.points([centroid], color=(255,0,0)) \
+		.lines([[four_points[0], four_points[1]], [four_points[1], four_points[2]], \
+		        [four_points[2], four_points[3]], [four_points[3], four_points[0]]], \
+				color=(255,255,255)) \
+	.save("llr_debug_3")
+
 	return four_points
 
-def llr_pad(four_points):
+def llr_pad(four_points, img):
 	print(utils.call("llr_pad(four_points)"));pco = pyclipper.PyclipperOffset()
 	pco.AddPath(four_points, pyclipper.JT_MITER, pyclipper.ET_CLOSEDPOLYGON)
+	
+	padded = pco.Execute(60)[0]
+	debug.image(img) \
+		.points(four_points, color=(0,0,255)) \
+		.points(padded, color=(0,255,0)) \
+		.lines([[four_points[0], four_points[1]], [four_points[1], four_points[2]], \
+		        [four_points[2], four_points[3]], [four_points[3], four_points[0]]], \
+				color=(255,255,255)) \
+		.lines([[padded[0], padded[1]], [padded[1], padded[2]], \
+		        [padded[2], padded[3]], [padded[3], padded[0]]], \
+				color=(255,255,255)) \
+	.save("llr_final_pad")
+
 	return pco.Execute(60)[0] # 60,70/75 is best (with buffer/for debug purpose)

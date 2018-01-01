@@ -11,6 +11,10 @@ __laps_weights = 'data/models/laps.weights.h5'
 NC_LAPS_MODEL = model_from_json(open(__laps_model, 'r').read())
 NC_LAPS_MODEL.load_weights(__laps_weights)
 
+#from keras.utils import plot_model, print_summary
+#plot_model(NC_LAPS_MODEL, show_shapes=True, to_file='model.png')
+#print_summary(NC_LAPS_MODEL)
+
 ################################################################################
 
 def laps_intersections(lines):
@@ -74,10 +78,10 @@ def laps_detector(img):
 
 	# decision
 	if t:
-		#debug.image(imgd).save(str(hash(str(imgd))), prefix=False)
+		#debug.image(imgd).save("OK" + str(hash(str(imgd))), prefix=False)
 		return (True, pred[0])
 	else:
-		#debug.image(imgd).save(str(hash(str(imgd))), prefix=False)
+		#debug.image(imgd).save("NO" + str(hash(str(imgd))), prefix=False)
 		return (False, pred[0])
 
 ################################################################################

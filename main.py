@@ -38,7 +38,7 @@ def layer():
 	# --- 3 step --- last layer reproduction (for chessboard corners) ----------
 	print(utils.ribb(utils.head(" LLR"), utils.clock(), "--- 3 step "))
 	inner_points = LLR(NC_IMAGE['main'], points, lines)
-	four_points = llr_pad(inner_points) # padcrop
+	four_points = llr_pad(inner_points, NC_IMAGE['main']) # padcrop
 
 	# --- 4 step --- preparation for next layer (deep analysis) ----------------
 	print(utils.ribb(utils.head("   *"), utils.clock(), "--- 4 step "))

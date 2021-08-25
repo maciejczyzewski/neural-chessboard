@@ -1,5 +1,5 @@
 keras==2.1.2
-tensorflow==1.4.1
+tensorflow==2.5.1
 scipy==1.0.0
 pyclipper==1.0.6
 numpy==1.13.3
